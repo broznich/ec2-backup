@@ -43,7 +43,7 @@ AWS_KEY=`cat $AWS_ACCESS_FILE | awk 'BEGIN{ RS="\n\n";FS="\n" }{ print $2 }'`
 #Create backup directory on vol storage
 if [[ ! -d "/vol/backup" ]]
 then
-        echo 'Create backup directory'
+        echo -e 'Create backup directory\n'
         mkdir /vol/backup
 fi 
 
@@ -82,15 +82,18 @@ do
                 FREEZE_STRING="--freeze-filesystem $FREEZE_PATH"
         fi
         
+        echo -e "Create snapshot $VOLNAME \n"
         #Create snapshot $VOLNAME and save to SNAPSHOT_ID variable Snapshot Id
         SNAPSHOT_ID=`ec2-consistent-snapshot --description "$DESCRIPTION_ENV $DESCRIPTION_FROM_CONFIG $CREATED_DATE" $DATABASE_STRING $FREEZE_STRING $VOLUME_NAME`
-        echo "snapshot created: $SNAPSHOT_ID, fs: $FREEZE_STRING"
+        echo -e "snapshot created: $SNAPSHOT_ID, fs: $FREEZE_STRING \n"
         sleep 120
         #Wait 30s timeout as creating backup takes time (100Gb ~ 7-8c)
 
         #Separate destination zones and copy snapshot to each server
+        echo -e "Copy snapshot $SNAPSHOT_ID to different datacenters\n"
         echo $DESTINATION_DATACENTER | sed -e 's/ /\n/g' | while read dline
         do
+                echo -e "Copy to $dline\n"
                 ec2-copy-snapshot --aws-access-key $AWS_ACCESS --aws-secret-key $AWS_KEY --region $dline -s $SNAPSHOT_ID -r $SOURCE_DATACENTER
                 #Wait 5s (not necessarily)
                 sleep 5
