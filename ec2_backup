@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# It backups into two amazon data centers:
+#    /vol - user assets, binary mysql files, mysql dump
+#    / - all system drive
+#
+# It requires configs in place:
+#   /root/
+#       .my.cnf - MYSQL config
+#       .awssecret - Keys for amazon server
+#       .awsvolumes - Config for backup volumes and snapshots
+#
+#       More detail in issue #2135
+#
+# This script dumped mysql database to sql file, make snapshot of each volume (specified in the config file), copy snapshots to different datacenters
+#
+#ZONES
+#us-east-1 - N.Virginia
+#us-west-2 - Oregon
+#us-west-1 - N.California
+#eu-west-1 - Irland
+#ap-southeast-1 - Singapore
+#ap-northeast-1 - Tokyo
+#ap-southeast-2 - Sydney
+#sa-east-1 - Sao Paulo
+source /etc/profile.d/extended_env
+#COMMENT="dcGuiStaging"
+#ZONES="ap-southeast-2 eu-west-1 sa-east-1"
+#ZONES="ap-southeast-2"
+
+CREATED_DATE=`date +%d.%m.%Y`
+
+MYSQL_CONFIG=$HOME/.my.cnf
+
+MYSQL_USER=`cat $MYSQL_CONFIG | grep user | awk -F= '{ print $2 }'`
+MYSQL_PASS=`cat $MYSQL_CONFIG | grep password | awk -F= '{ print $2 }'`
+
+AWS_CONFIG=$HOME/.awsvolumes
+AWS_ACCESS_FILE=$HOME/.awssecret
+AWS_ACCESS=`cat $AWS_ACCESS_FILE | awk 'BEGIN{ RS="\n\n";FS="\n" }{ print $1 }'`
+AWS_KEY=`cat $AWS_ACCESS_FILE | awk 'BEGIN{ RS="\n\n";FS="\n" }{ print $2 }'`
+
+#Create backup directory on vol storage
+if [[ ! -d "/vol/backup" ]]
+then
+        echo 'Create backup directory'
+        mkdir /vol/backup
+fi 
+
+#Add environment to description for snapshot
+if [ ! -n "$ENV" ]; then
+        DESCRIPTION_ENV="Undefined server "
+else
+        DESCRIPTION_ENV="$ENV server "
+fi
+
+#Dump database to sql file on /vol storage + gzip
+#mysqldump --complete-insert --force --add-drop-table --create-options --lock-tables -u $MYSQL_USER -p$MYSQL_PASS easylitics > /vol/backup/easylitics.sql;gzip -9 -f /vol/backup/easylitics.sql;
+
+#Read line by line .awsvolumes config file (ec2 volumes which need to backup)
+cat $AWS_CONFIG | while read line
+do
+        DESCRIPTION_FROM_CONFIG=`echo $line | awk -F';' '{ print $1 }'`
+        VOLUME_NAME=`echo $line | awk -F';' '{ print $2 }'`
+        SOURCE_DATACENTER=`echo $line | awk -F';' '{ print $3 }'`
+        DESTINATION_DATACENTER=`echo $line | awk -F';' '{ print $6 }'`
+        NEED_FREEZE_DB=`echo $line | awk -F';' '{ print $5 }'`
+        FREEZE_PATH=`echo $line | awk -F';' '{ print $4 }'`
+        
+        #If config has parametr mysql (freeze mysql) add it to exec string
+        if [[ "$NEED_FREEZE_DB" == "mysql" ]]
+        then
+                DATABASE_STRING=" --mysql"
+        else
+                DATABASE_STRING=""
+        fi
+        
+        if [[ "$FREEZE_PATH" == "false" ]]
+        then
+                FREEZE_STRING=""
+        else
+                FREEZE_STRING="--freeze-filesystem $FREEZE_PATH"
+        fi
+        
+        #Create snapshot $VOLNAME and save to SNAPSHOT_ID variable Snapshot Id
+        SNAPSHOT_ID=`ec2-consistent-snapshot --description "$DESCRIPTION_ENV $DESCRIPTION_FROM_CONFIG $CREATED_DATE" $DATABASE_STRING $FREEZE_STRING $VOLUME_NAME`
+        echo "snapshot created: $SNAPSHOT_ID, fs: $FREEZE_STRING"
+        sleep 120
+        #Wait 30s timeout as creating backup takes time (100Gb ~ 7-8c)
+
+        #Separate destination zones and copy snapshot to each server
+        echo $DESTINATION_DATACENTER | sed -e 's/ /\n/g' | while read dline
+        do
+                ec2-copy-snapshot --aws-access-key $AWS_ACCESS --aws-secret-key $AWS_KEY --region $dline -s $SNAPSHOT_ID -r $SOURCE_DATACENTER
+                #Wait 5s (not necessarily)
+                sleep 5
+        done
+done
