@@ -49,9 +49,9 @@ fi
 
 #Add environment to description for snapshot
 if [ ! -n "$ENV" ]; then
-        DESCRIPTION_ENV="Undefined server "
+        DESCRIPTION_ENV="Prod [Undefined server] "
 else
-        DESCRIPTION_ENV="$ENV server "
+        DESCRIPTION_ENV="Prod $ENV "
 fi
 
 #Dump database to sql file on /vol storage + gzip
@@ -84,7 +84,7 @@ do
         
         echo -en "\nCreating snapshot of $VOLUME_NAME. "
         #Create snapshot $VOLNAME and save to SNAPSHOT_ID variable Snapshot Id
-        SNAPSHOT_ID=`ec2-consistent-snapshot --description "$DESCRIPTION_ENV $DESCRIPTION_FROM_CONFIG $CREATED_DATE" $DATABASE_STRING $FREEZE_STRING $VOLUME_NAME`
+        SNAPSHOT_ID=`ec2-consistent-snapshot --description "$DESCRIPTION_ENV $DESCRIPTION_FROM_CONFIG $BTYPE $CREATED_DATE" $DATABASE_STRING $FREEZE_STRING $VOLUME_NAME`
         echo -en "Snapshot created: $SNAPSHOT_ID.\n"
         sleep 120
         #Wait 30s timeout as creating backup takes time (100Gb ~ 7-8c)
