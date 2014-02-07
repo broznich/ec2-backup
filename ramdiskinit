@@ -1,0 +1,17 @@
+#!/bin/bash
+HOME_DIR=dmitry
+CACHE_SIZE=1200
+
+mkdir /tmp/ccache
+mount -t tmpfs -o size=${CACHE_SIZE}M,mode=0744 tmpfs /tmp/ccache/
+#chmod 777 /tmp/ccache/ -R
+mkdir /tmp/ccache/google-chrome
+mkdir /tmp/ccache/appcache
+mkdir /tmp/ccache/lib
+
+cp -r --preserve=mode,ownership,timestamp,all /var/lib/mysql /tmp/ccache/lib/
+#ln -s /tmp/ccache/google-chrome /home/$HOME_DIR/.cache/google-chrome
+mount -o bind /tmp/ccache/google-chrome /home/$HOME_DIR/.cache/google-chrome
+mount -o bind /tmp/ccache/appcache /var/www/dc/projects/Easylitics/app/cache
+chmod -R a+rw /tmp/ccache
+mount -o bind /tmp/ccache/lib/mysql /var/lib/mysql
